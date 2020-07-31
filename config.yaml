@@ -1,0 +1,24 @@
+# exporter port
+port: "9999"
+# configuration file name
+config: config
+# The prefix of the metrics
+prefix: aci_
+
+# Profiles for different fabrics
+fabrics:
+  cisco_sandbox:
+    username: admin
+    password: ciscopsdt
+    apic:
+      - https://www.opsdis.com
+      - https://sandboxapicdc.cisco.com
+      
+
+# Http client settings used to access apic
+httpclient:
+  insecurehttps: true
+  keepalive: 30
+  timeout: 30
+  tlshandshaketimeout: 10
+
