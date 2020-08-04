@@ -20,7 +20,7 @@ import (
 )
 
 const (
-	// ExporterName name of the exporter
+	// Name of the program
 	ExporterName = "aci-streamer"
 
 	// MetricsPrefix the prefix for all internal metrics
@@ -35,13 +35,13 @@ func ExporterNameAsEnv() string {
 // SetDefaultValues define all default values
 func SetDefaultValues() {
 
-	// If set as env vars use the ExporterName as prefix like ACI_EXPORTER_PORT for the port var
+	// If set as env vars use the ExporterName as prefix like ACI_STREAMER_PORT for the port var
 	viper.SetEnvPrefix(ExporterNameAsEnv())
 
 	// All fields with . will be replaced with _ for ENV vars
 	viper.SetEnvKeyReplacer(strings.NewReplacer(".", "_"))
 
-	// aci-exporter
+	// aci-streamer
 	viper.SetDefault("port", 8080)
 	viper.BindEnv("port")
 	viper.SetDefault("logfile", "")
@@ -50,12 +50,8 @@ func SetDefaultValues() {
 	viper.BindEnv("logformat")
 	viper.SetDefault("config", "config")
 	viper.BindEnv("config")
-	viper.SetDefault("prefix", "aci_")
-	viper.BindEnv("prefix")
-
-	// If set to true response will always be in openmetrics format
-	viper.SetDefault("openmetrics", false)
-	viper.BindEnv("openmetrics")
+	viper.SetDefault("fabric", "")
+	viper.BindEnv("fabric")
 
 	// HTTPCLient
 	viper.SetDefault("HTTPClient.timeout", 3)

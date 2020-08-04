@@ -1,5 +1,5 @@
 # internal metrics port
-port: "9001"
+port: "8081"
 # configuration file name
 config: config
 

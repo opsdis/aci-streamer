@@ -20,6 +20,8 @@ import (
 	"crypto/x509"
 	"fmt"
 	"github.com/gorilla/websocket"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/tidwall/gjson"
 	"github.com/tidwall/sjson"
 	"strings"
@@ -36,20 +38,32 @@ import (
 	"github.com/spf13/viper"
 )
 
-
 // AciConnection is the connection object
 type AciConnection struct {
-	ctx                 context.Context
-	fabricConfig        Fabric
-	activeController    *int
-	URLMap              map[string]string
-	Headers             map[string]string
-	Client              HTTPClient
-	cookieValue         *string
+	ctx                   context.Context
+	fabricConfig          Fabric
+	websocketConfig       WebSocket
+	activeController      *int
+	URLMap                map[string]string
+	Headers               map[string]string
+	Client                HTTPClient
+	cookieValue           *string
 	activeSubscribtionIds map[string]string
+	streams               Streams
 }
 
-func newAciConnction(ctx context.Context, fabricConfig Fabric) *AciConnection {
+type WebSocket struct {
+	websocket []Socket
+}
+
+type Socket struct {
+	hostname string
+	port     string
+	schema   string // ws or wss
+
+}
+
+func newAciConnction(ctx context.Context, fabricConfig Fabric, streams Streams) *AciConnection {
 	// Empty cookie jar
 	jar, _ := cookiejar.New(nil)
 
@@ -67,76 +81,109 @@ func newAciConnction(ctx context.Context, fabricConfig Fabric) *AciConnection {
 	urlMap := make(map[string]string)
 
 	urlMap["login"] = "/api/mo/aaaLogin.xml"
+	urlMap["refresh"] = "/api/mo/aaaRefresh.xml"
 	urlMap["logout"] = "/api/mo/aaaLogout.xml"
 	urlMap["fabric_name"] = "/api/mo/topology/pod-1/node-1/av.json"
 
+	// Create websocket definitions from fabricConfig
+
+	ws := WebSocket{websocket: make([]Socket, len(fabricConfig.Apic))}
+	for k, v := range fabricConfig.Apic {
+		wsUrl, _ := url.Parse(v)
+		var schema = "wss"
+		var port = "443"
+
+		if wsUrl.Scheme == "http" {
+			schema = "ws"
+		}
+		if wsUrl.Port() == "" {
+			if schema == "ws" {
+				port = "80"
+			}
+		} else {
+			port = wsUrl.Port()
+		}
+		ws.websocket[k] = Socket{hostname: wsUrl.Host, port: port, schema: schema}
+	}
 	return &AciConnection{
-		ctx:              ctx,
-		fabricConfig:     fabricConfig,
-		activeController: new(int),
-		URLMap:           urlMap,
-		Headers:          headers,
-		Client:       httpClient,
-		cookieValue:  new(string),
+		ctx:                   ctx,
+		fabricConfig:          fabricConfig,
+		activeController:      new(int),
+		URLMap:                urlMap,
+		Headers:               headers,
+		Client:                httpClient,
+		cookieValue:           new(string),
 		activeSubscribtionIds: make(map[string]string),
+		streams:               streams,
+		websocketConfig:       ws,
 	}
 }
 
 func (c AciConnection) login() error {
+	return c.authenticate("login")
+}
+
+func (c AciConnection) authenticate(method string) error {
 	for i, controller := range c.fabricConfig.Apic {
-		_, status, err, jars := c.doPostXML(fmt.Sprintf("%s%s", controller, c.URLMap["login"]),
+		_, status, err, jars := c.doPostXML(fmt.Sprintf("%s%s", controller, c.URLMap[method]),
 			[]byte(fmt.Sprintf("<aaaUser name=%s pwd=%s/>", c.fabricConfig.Username, c.fabricConfig.Password)))
 		if err != nil || status != 200 {
 
-			err = fmt.Errorf("failed to login to %s, try next apic", controller)
+			err = fmt.Errorf("failed to %s to %s, try next apic", method, controller)
 
 			log.Error(err)
 		} else {
 			*c.activeController = i
 			log.WithFields(log.Fields{
 				"requestid": c.ctx.Value("requestid"),
-			}).Info("Using apic %s", controller)
+			}).Info(fmt.Sprintf("Using apic %s", controller))
 			c.printCookie(jars)
 			*c.cookieValue = jars[0].Value
 			return nil
 		}
 	}
-	return fmt.Errorf("failed to login to any apic controllers")
-
+	return fmt.Errorf(fmt.Sprintf("Failed to %s to any apic controllers", method))
 }
 
 func (c AciConnection) printCookie(jars []*http.Cookie) {
 
-	var cookieNum int = len(jars)
-	log.Printf("cookieNum=%d", cookieNum)
+	var cookieNum = len(jars)
+	log.Debug(fmt.Sprintf("cookieNum=%d", cookieNum))
 	for i := 0; i < cookieNum; i++ {
-		var curCk *http.Cookie = jars[i]
+		var curCk = jars[i]
 		//log.Printf("curCk.Raw=%s", curCk.Raw)
-		log.Printf("Cookie [%d]", i)
-		log.Printf("Name\t=%s", curCk.Name)
-		log.Printf("Value\t=%s", curCk.Value)
-		log.Printf("Path\t=%s", curCk.Path)
-		log.Printf("Domain\t=%s", curCk.Domain)
-		log.Printf("Expires\t=%s", curCk.Expires)
-		log.Printf("RawExpires=%s", curCk.RawExpires)
-		log.Printf("MaxAge\t=%d", curCk.MaxAge)
-		log.Printf("Secure\t=%t", curCk.Secure)
-		log.Printf("HttpOnly=%t", curCk.HttpOnly)
-		log.Printf("Raw\t=%s", curCk.Raw)
-		log.Printf("Unparsed=%s", curCk.Unparsed)
+		log.Debug(fmt.Sprintf("Cookie [%d]", i))
+		log.Info(fmt.Sprintf("Name=%s", curCk.Name))
+		log.Info(fmt.Sprintf("Value\t=%s", curCk.Value))
+		log.Debug(fmt.Sprintf("Path\t=%s", curCk.Path))
+		log.Debug(fmt.Sprintf("Domain\t=%s", curCk.Domain))
+		log.Debug(fmt.Sprintf("Expires\t=%s", curCk.Expires))
+		log.Debug(fmt.Sprintf("RawExpires=%s", curCk.RawExpires))
+		log.Debug(fmt.Sprintf("MaxAge\t=%d", curCk.MaxAge))
+		log.Debug(fmt.Sprintf("Secure\t=%t", curCk.Secure))
+		log.Debug(fmt.Sprintf("HttpOnly=%t", curCk.HttpOnly))
+		log.Debug(fmt.Sprintf("Raw\t=%s", curCk.Raw))
+		log.Debug(fmt.Sprintf("Unparsed=%s", curCk.Unparsed))
 	}
 
 }
 
-func (c AciConnection) sessionRefresh() bool {
-	c.get(fmt.Sprintf("%s/api/aaaRefresh.json", c.fabricConfig.Apic[*c.activeController]))
-	return true
+func (c AciConnection) sessionRefresh() error {
+	return c.authenticate("refresh")
+	/*
+		data, err := c.get(fmt.Sprintf("%s/api/aaaRefresh.json", c.fabricConfig.Apic[*c.activeController]))
+		if err == nil {
+			*c.cookieValue = gjson.Get(string(data), "imdata.0.aaaLogin.attributes.token").Str
+		}
+		return err
+
+
+	*/
 }
 
-
-func (c AciConnection) subscriptionRefresh(subscriptionId string) bool {
-	c.get(fmt.Sprintf("%s/api/subscriptionRefresh.json?id=%s", c.fabricConfig.Apic[*c.activeController], subscriptionId))
-	return true
+func (c AciConnection) subscriptionRefresh(subscriptionId string) error {
+	_, err := c.get(fmt.Sprintf("%s/api/subscriptionRefresh.json?id=%s", c.fabricConfig.Apic[*c.activeController], subscriptionId))
+	return err
 }
 
 func (c AciConnection) logout() bool {
@@ -151,7 +198,6 @@ func (c AciConnection) logout() bool {
 	return true
 }
 
-// TODO spara class relationen till subscription - användas när man plockar ut stömmen från websocket
 func (c AciConnection) subscribe(class string, query string) (string, error) {
 	var err error
 	var data []byte
@@ -162,58 +208,130 @@ func (c AciConnection) subscribe(class string, query string) (string, error) {
 	}
 
 	if err != nil {
-		log.WithFields(log.Fields{
-			"requestid": c.ctx.Value("requestid"),
-		}).Error(fmt.Sprintf("Class request %s failed - %s.", class, err))
+		log.Error(fmt.Sprintf("Class request %s failed - %s.", class, err))
 		return "", err
 	}
 	subscriptionId := gjson.Get(string(data), "subscriptionId").Str
 	return subscriptionId, nil
 }
 
-func (c AciConnection) startWebSocket(fabricName string) {
-	//u := url.URL{Scheme: "wss", Host: c.fabricConfig.Apic[*c.activeController], Path: "/socket" + *c.cookieValue}
-	u := url.URL{Scheme: "wss", Host: "sandboxapicdc.cisco.com:443", Path: "/socket" + *c.cookieValue}
-	log.Info("connecting to %s", u.String())
+func (c AciConnection) startWebSocket(fabricName string, ch chan int) {
+
+	// Create a Prometheus histogram for response time of the exporter
+	wsCounter := promauto.NewCounterVec(prometheus.CounterOpts{
+		Name: MetricsPrefix + "ws_reads_total",
+		Help: "Number of websocket reads",
+	},
+		[]string{"fabric"},
+	)
+
 	rootCAs, _ := x509.SystemCertPool()
 	if rootCAs == nil {
 		rootCAs = x509.NewCertPool()
 	}
 	config := tls.Config{RootCAs: rootCAs, InsecureSkipVerify: true}
 
-	wsHeaders := http.Header{
-		"Origin": {u.Host},
-		"Sec-WebSocket-Extensions": {"permessage-deflate; client_max_window_bits, x-webkit-deflate-frame"},
-	}
-
-	d := websocket.Dialer{TLSClientConfig: &config}
-	wc, _, err := d.Dial(u.String(), wsHeaders)
-
-	if err != nil {
-		log.Fatal("dial:", err)
-	}
-
-	defer wc.Close()
-
 	for {
-		_, mesg, err := wc.ReadMessage()
-		if err != nil {
-			log.Info("read:", err)
+		host := c.websocketConfig.websocket[*c.activeController].hostname + ":" + c.websocketConfig.websocket[*c.activeController].port
+		schema := c.websocketConfig.websocket[*c.activeController].schema
+
+		u := url.URL{Scheme: schema, Host: host, Path: "/socket" + *c.cookieValue}
+		log.Info(fmt.Sprintf("WS connecting to %s", u.String()))
+		wsHeaders := http.Header{
+			"Origin":                   {u.Host},
+			"Sec-WebSocket-Extensions": {"permessage-deflate; client_max_window_bits, x-webkit-deflate-frame"},
 		}
-		// Flytta til config
-		// Get subscriptionID -> vilken konfig
 
-		c.reciver(fabricName, mesg)
+		d := websocket.Dialer{TLSClientConfig: &config, HandshakeTimeout: 45 * time.Second}
+
+		wc, _, err := d.Dial(u.String(), wsHeaders)
+
+		if err != nil {
+			log.Fatal("dial:", err)
+		}
+
+		defer wc.Close()
+
+		for {
+			_, mesg, err := wc.ReadMessage()
+			if err != nil {
+				log.Error("WS read:", err)
+				// send re subscribe
+
+				ch <- 0
+				wc.Close()
+				break
+				// Update with new cookie value
+				/*
+					u := url.URL{Scheme: schema, Host: host, Path: "/socket" + *c.cookieValue}
+					wc.Close()
+					wc, _, err = d.Dial(u.String(), wsHeaders)
+					log.Info(fmt.Sprintf("WS reonnecting to %s", u.String()))
+					if err != nil {
+						log.Error("WS reconnect:", err)
+
+					}
+
+				*/
+			}
+			wsCounter.With(prometheus.Labels{"fabric": fabricName}).Add(1)
+			c.reciver(fabricName, mesg)
+		}
 	}
-
-
 }
+
 func (c AciConnection) activeSubscribtions(ids map[string]string) {
 	for k, v := range ids {
 		c.activeSubscribtionIds[k] = v
 	}
 }
 
+func (c AciConnection) reciver(fabricName string, mesg []byte) {
+	subscribtionName := c.getSubscribersName(mesg)
+	if subscribtionName == "" {
+		// Not my subscribtion
+		return
+	}
+
+	stream := c.streams[subscribtionName]
+
+	json := gjson.Get(string(mesg), stream.Root)
+	messageProperties := make([]interface{}, len(stream.Message.Properties))
+	for k, v := range stream.Message.Properties {
+		messageProperties[k] = gjson.Get(json.Raw, v).Str
+	}
+
+	labels := make(map[string]string)
+	for _, v := range stream.Labels {
+		re := regexpcache.MustCompile(v.Regex)
+		match := re.FindStringSubmatch(gjson.Get(json.Raw, v.PropertyName).Str)
+		if len(match) != 0 {
+			for i, name := range re.SubexpNames() {
+				if i != 0 && name != "" {
+					labels[name] = match[i]
+				}
+			}
+		}
+	}
+	modjson := json.Raw
+
+	if len(labels) > 0 {
+		for k, v := range labels {
+			modjson, _ = sjson.Set(modjson, k, v)
+		}
+	}
+
+	modjson, _ = sjson.Set(modjson, "message", fmt.Sprintf(stream.Message.Format, messageProperties...))
+	modjson, _ = sjson.Set(modjson, "fabric", fabricName)
+	if stream.Timestamp.PropertyName != "" {
+		modjson, _ = sjson.Set(modjson, "timestamp", strings.Split(gjson.Get(json.Raw, stream.Timestamp.PropertyName).Str, "+")[0]+"000000Z")
+	}
+	modjson, _ = sjson.Set(modjson, "subscribtion", subscribtionName)
+
+	fmt.Println(modjson)
+}
+
+/*
 func (c AciConnection) reciver(fabricName string, mesg []byte) {
 
 	subscribtionName := c.getSubscribersName(mesg)
@@ -246,7 +364,7 @@ func (c AciConnection) reciver(fabricName string, mesg []byte) {
 
 	fmt.Println(modjson)
 }
-
+*/
 func (c AciConnection) getSubscribersName(mesg []byte) string {
 	ids := gjson.Get(string(mesg), "subscriptionId").Array()
 
@@ -391,4 +509,3 @@ func (c AciConnection) doPostXML(url string, requestBody []byte) ([]byte, int, e
 
 	return nil, resp.StatusCode, fmt.Errorf("ACI api returned %d", resp.StatusCode), nil
 }
-
