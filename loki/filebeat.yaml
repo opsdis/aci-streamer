@@ -1,0 +1,10 @@
+filebeat.inputs:
+
+  - type: log
+    paths:
+      - /tmp/aci.log
+    json.keys_under_root: true
+    json.add_error_key: true
+
+output.console:
+  pretty: true
