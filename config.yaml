@@ -1,5 +1,5 @@
 # internal metrics port
-port: "9001"
+port: "9644"
 # configuration file name
 config: config
 
@@ -34,6 +34,7 @@ streams:
     timestamp:
       property_name: lastTransition
     message:
+      name: mesg
       format: "%s - %s [dn: %s]"
       # Names are add to the format in the order they are written
       property_names:
@@ -47,6 +48,7 @@ streams:
     root: imdata.0.aaaActiveUserSession.attributes
     query_parameter: "?query-target=self&query-target-filter=and(wcard(aaaActiveUserSession.status,\"created\"))"
     message:
+      name: mesg
       format: "%s - %s"
       property_names:
         - name
