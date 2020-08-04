@@ -24,30 +24,27 @@ httpclient:
 streams:
   faults:
     class_name: faultInst
-    #job_name: aci-faults
-    # Additional query parameters for the class query, must start with ? and be separated by &
     root: imdata.0.faultInst.attributes
     query_parameter: ""
     labels:
       - property_name: dn
         regex: "^topology/pod-(?P<podid>[1-9][0-9]*)/node-(?P<nodeid>[1-9][0-9]*)/sys/.*"
-    timestamp:
-      property_name: lastTransition
     message:
-      format: "%s - %s [dn: %s]"
+      name: message
+      format: "%s [dn: %s]"
       # Names are add to the format in the order they are written
       property_names:
-        - lastTransition
         - descr
         - dn
 
 
   sessions:
     class_name: aaaActiveUserSession
-    root: imdata.0.aaaActiveUserSession.attributes
     query_parameter: "?query-target=self&query-target-filter=and(wcard(aaaActiveUserSession.status,\"created\"))"
+    root: imdata.0.aaaActiveUserSession.attributes
     message:
-      format: "%s - %s"
+      name: message
+      format: "User %s IP %s"
       property_names:
         - name
-        - status
+        - ipAddress

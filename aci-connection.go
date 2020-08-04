@@ -321,50 +321,18 @@ func (c AciConnection) reciver(fabricName string, mesg []byte) {
 		}
 	}
 
-	modjson, _ = sjson.Set(modjson, "message", fmt.Sprintf(stream.Message.Format, messageProperties...))
+	if stream.Message.Name != "" {
+		modjson, _ = sjson.Set(modjson, stream.Message.Name, fmt.Sprintf(stream.Message.Format, messageProperties...))
+	}
 	modjson, _ = sjson.Set(modjson, "fabric", fabricName)
 	if stream.Timestamp.PropertyName != "" {
 		modjson, _ = sjson.Set(modjson, "timestamp", strings.Split(gjson.Get(json.Raw, stream.Timestamp.PropertyName).Str, "+")[0]+"000000Z")
 	}
-	modjson, _ = sjson.Set(modjson, "subscribtion", subscribtionName)
+	modjson, _ = sjson.Set(modjson, "stream", subscribtionName)
 
 	fmt.Println(modjson)
 }
 
-/*
-func (c AciConnection) reciver(fabricName string, mesg []byte) {
-
-	subscribtionName := c.getSubscribersName(mesg)
-
-	json := gjson.Get(string(mesg), "imdata.0.faultInst.attributes")
-	descr := gjson.Get(json.Raw, "descr").Str
-	dn := gjson.Get(json.Raw, "dn").Str
-	//t, _ := time.Parse("2020-07-30T23:14:40.786Z00:00",strings.Replace(gjson.Get(json.Raw,"lastTransition").Str,"+","000000Z",1))
-	//fmt.Println(t.Format(time.RFC3339Nano))
-	re := regexpcache.MustCompile("^topology/pod-(?P<podid>[1-9][0-9]*)/node-(?P<nodeid>[1-9][0-9]*)/.*")
-	match := re.FindStringSubmatch(dn)
-	labels := make(map[string]string)
-	if len(match) != 0 {
-		for i, name := range re.SubexpNames() {
-			if i != 0 && name != "" {
-				labels[name] = match[i]
-			}
-		}
-	}
-	modjson := json.Raw
-	if len(labels) > 0 {
-		for k, v := range labels {
-			modjson, _ = sjson.Set(modjson, k, v)
-		}
-	}
-	modjson, _ = sjson.Set(modjson, "message", descr+" [dn:"+dn+"]")
-	modjson, _ = sjson.Set(modjson, "fabric", fabricName)
-	modjson, _ = sjson.Set(modjson, "timestamp", strings.Split(gjson.Get(json.Raw, "lastTransition").Str, "+")[0]+"000000Z")
-	modjson, _ = sjson.Set(modjson, "subscribtion", subscribtionName)
-
-	fmt.Println(modjson)
-}
-*/
 func (c AciConnection) getSubscribersName(mesg []byte) string {
 	ids := gjson.Get(string(mesg), "subscriptionId").Array()
 
@@ -381,6 +349,7 @@ func (c AciConnection) getSubscribersName(mesg []byte) string {
 
 	return ""
 }
+
 func (c AciConnection) getFabricName() (string, error) {
 	data, err := c.getByQuery("fabric_name")
 	if err != nil {
@@ -389,6 +358,7 @@ func (c AciConnection) getFabricName() (string, error) {
 
 	return gjson.Get(data, "imdata.0.infraCont.attributes.fbDmNm").Str, nil
 }
+
 func (c AciConnection) getByQuery(table string) (string, error) {
 	data, err := c.get(fmt.Sprintf("%s%s", c.fabricConfig.Apic[*c.activeController], c.URLMap[table]))
 	if err != nil {

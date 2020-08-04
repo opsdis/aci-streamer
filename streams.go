@@ -33,6 +33,7 @@ type Timestamp struct {
 }
 
 type Message struct {
+	Name       string   `mapstructure:"name"`
 	Format     string   `mapstructure:"format"`
 	Properties []string `mapstructure:"property_names"`
 }
