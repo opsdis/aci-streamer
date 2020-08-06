@@ -19,7 +19,6 @@ httpclient:
   insecurehttps: true
   keepalive: 30
   timeout: 30
-  tlshandshaketimeout: 10
 
 streams:
   faults:
