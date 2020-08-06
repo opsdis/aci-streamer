@@ -38,6 +38,14 @@ import (
 	"github.com/spf13/viper"
 )
 
+// Create a Prometheus counter for number of reads on the websocket
+var wsCounter = promauto.NewCounterVec(prometheus.CounterOpts{
+	Name: MetricsPrefix + "ws_reads_total",
+	Help: "Number of websocket reads",
+},
+	[]string{"fabric"},
+)
+
 // AciConnection is the connection object
 type AciConnection struct {
 	ctx                   context.Context
@@ -105,6 +113,7 @@ func newAciConnction(ctx context.Context, fabricConfig Fabric, streams Streams) 
 		}
 		ws.websocket[k] = Socket{hostname: wsUrl.Host, port: port, schema: schema}
 	}
+
 	return &AciConnection{
 		ctx:                   ctx,
 		fabricConfig:          fabricConfig,
@@ -215,22 +224,22 @@ func (c AciConnection) subscribe(class string, query string) (string, error) {
 	return subscriptionId, nil
 }
 
-func (c AciConnection) startWebSocket(fabricName string, ch chan int) {
+func (c AciConnection) startWebSocket(fabricName string, ch chan string) {
 
-	// Create a Prometheus histogram for response time of the exporter
-	wsCounter := promauto.NewCounterVec(prometheus.CounterOpts{
-		Name: MetricsPrefix + "ws_reads_total",
-		Help: "Number of websocket reads",
-	},
-		[]string{"fabric"},
-	)
-
+	/*
+		wsCounter := promauto.NewCounterVec(prometheus.CounterOpts{
+			Name: MetricsPrefix + "ws_reads_total",
+			Help: "Number of websocket reads",
+		},
+			[]string{"fabric"},
+		)
+	*/
 	rootCAs, _ := x509.SystemCertPool()
 	if rootCAs == nil {
 		rootCAs = x509.NewCertPool()
 	}
 	config := tls.Config{RootCAs: rootCAs, InsecureSkipVerify: true}
-
+	breakout := ""
 	for {
 		host := c.websocketConfig.websocket[*c.activeController].hostname + ":" + c.websocketConfig.websocket[*c.activeController].port
 		schema := c.websocketConfig.websocket[*c.activeController].schema
@@ -243,12 +252,17 @@ func (c AciConnection) startWebSocket(fabricName string, ch chan int) {
 		}
 
 		d := websocket.Dialer{TLSClientConfig: &config, HandshakeTimeout: 45 * time.Second}
-
+		start := time.Now()
 		wc, _, err := d.Dial(u.String(), wsHeaders)
+		log.Info(fmt.Sprintf("WS connection time %d", time.Since(start).Milliseconds()))
 
 		if err != nil {
 			log.Fatal("dial:", err)
+			ch <- "failed"
+			return
 		}
+
+		ch <- "started"
 
 		defer wc.Close()
 
@@ -256,26 +270,19 @@ func (c AciConnection) startWebSocket(fabricName string, ch chan int) {
 			_, mesg, err := wc.ReadMessage()
 			if err != nil {
 				log.Error("WS read:", err)
-				// send re subscribe
-
-				ch <- 0
+				// send 0 for reconnect
+				ch <- "failed"
 				wc.Close()
+				breakout = "breakout"
 				break
-				// Update with new cookie value
-				/*
-					u := url.URL{Scheme: schema, Host: host, Path: "/socket" + *c.cookieValue}
-					wc.Close()
-					wc, _, err = d.Dial(u.String(), wsHeaders)
-					log.Info(fmt.Sprintf("WS reonnecting to %s", u.String()))
-					if err != nil {
-						log.Error("WS reconnect:", err)
 
-					}
-
-				*/
 			}
 			wsCounter.With(prometheus.Labels{"fabric": fabricName}).Add(1)
 			c.reciver(fabricName, mesg)
+		}
+		if breakout == "breakout" {
+			log.Info("WS breakout")
+			return
 		}
 	}
 }

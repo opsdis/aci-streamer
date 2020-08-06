@@ -141,33 +141,35 @@ func startStreamer(connection *AciConnection, streams Streams) {
 		os.Exit(1)
 	}
 	fabricName, _ := connection.getFabricName()
-	// TODO add channel to listen to if websocket fail
-	ch := make(chan int)
+
+	ch := make(chan string)
+
 	go connection.startWebSocket(fabricName, ch)
-	time.Sleep(1 * time.Second)
 
 	subIds := make(map[string]string)
 
-	for k, v := range streams {
-		subscriptionId, _ := connection.subscribe(v.ClassName, v.QueryParameter)
-		subIds[subscriptionId] = k
-	}
-
-	connection.activeSubscribtions(subIds)
-
-	// Enters refresh loop
 	// TODO add handling to restart everything if any of below fail
 	for {
 		select {
-		case msg1 := <-ch:
-			if msg1 == 0 {
-				log.Info(fmt.Sprintf("Re-subscribe"))
+		case fromWS := <-ch:
+			if fromWS == "failed" {
+				// The websocket has for some reason failed and must be restarted
+				log.Info(fmt.Sprintf("WS Restart ==========================================="))
+				go connection.startWebSocket(fabricName, ch)
+
+			}
+			if fromWS == "started" {
+				// The websocket has been started and is ready
+				log.Info(fmt.Sprintf("Re-subscribe ======================="))
+
 				subIds = make(map[string]string)
 				for k, v := range streams {
 					subscriptionId, _ := connection.subscribe(v.ClassName, v.QueryParameter)
 					subIds[subscriptionId] = k
+
 				}
 				connection.activeSubscribtions(subIds)
+
 			}
 		case <-time.After(time.Second * 30):
 			log.Info(fmt.Sprintf("Start refresh"))
@@ -181,9 +183,17 @@ func startStreamer(connection *AciConnection, streams Streams) {
 
 		for k, v := range subIds {
 			log.Info(fmt.Sprintf("Refresh id %s for %s", k, v))
+			if v == "" {
+				// Must subscribe again since lost id
+				log.Warn(fmt.Sprintf("Found empty subscribtion id, re subscribe for %s", v))
+				delete(subIds, k)
+				subscriptionId, _ := connection.subscribe(streams[v].ClassName, streams[v].QueryParameter)
+				subIds[subscriptionId] = v
+
+			}
 			err = connection.subscriptionRefresh(k)
 			if err != nil {
-				log.Error("Subscription refresh failed - ", err)
+				log.Error("Subscription refresh failed, will be reconnected next iteration - ", err)
 			}
 		}
 	}
