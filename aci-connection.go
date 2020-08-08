@@ -257,7 +257,7 @@ func (c AciConnection) startWebSocket(fabricName string, ch chan string) {
 		log.Info(fmt.Sprintf("WS connection time %d", time.Since(start).Milliseconds()))
 
 		if err != nil {
-			log.Fatal("dial:", err)
+			log.Error("dial:", err)
 			ch <- "failed"
 			return
 		}
