@@ -22,16 +22,16 @@ streams:
     query_parameter: "?query-target=self&query-target-filter=and(wcard(aaaActiveUserSession.status,\"created\"))"
     # The json root of where data is collected
     root: imdata.0.aaaActiveUserSession.attributes    
-    # A json key called message that has a format where source property names name and status is inserted
+    # A json key called mesg that has a format, Go fmt.Sprintf, where source property names is inserted
     # This is typical a field that do not exists in the original json
     message:
-      name: xyz
+      name: mesg
       format: "%s - %s"
       property_names:
         - name
         - ipAddress
 ```
-Orignal the message looks like:
+Orignal message from ACI looks like:
 ```json
 {
 	"subscriptionId": ["72066106679951361"],
@@ -84,7 +84,7 @@ After processed by the streams configuration:
 	"status": "created",
 	"uType": "local",
 	"uid": "0",
-	"message": "admin - created",
+	"mesg": "admin - 10.10.20.141",
 	"fabric": "ACI Fabric1",
 	"stream": "sessions"
 }
@@ -92,9 +92,9 @@ After processed by the streams configuration:
 The structure has been flattened from the `root` definition. Three additional keys has been added:
 - `fabric` the name of the ACI fabric
 - `stream` then name of the stream configuration
-- `message` the created new field
+- `mesg` the created new field
 
-> The main reason for the use of the `message` definition is to create a combined log key to use to save in the log 
+> The main reason for the use of the `mesg` definition is to create a combined log key to use when saved to the log 
 > system.
 
 A typical Loki configuration for the above example would be:
@@ -114,7 +114,7 @@ A typical Loki configuration for the above example would be:
       - json:
          # Define the json keys to use
          expressions:
-           message: message
+           message: mesg
            status: status
            fabric: fabric
       - labels:
@@ -126,8 +126,8 @@ A typical Loki configuration for the above example would be:
           source: message 
 ```
 
-So with the `selector` we can handle different stream's that are logged to the same file descriptor that the 
-aci-streamer writes to.
+With the Loki `selector` different stream's that are logged to the same file descriptor that the 
+aci-streamer writes to can be handled in unique ways.
 
 With aci-streamer we can for a stream also use a configuration directive called `labels`. We use the example to stream 
 ACI faults.
@@ -186,7 +186,7 @@ This will result in the following stream data:
 	"stream": "faults"
 }
 ```
-Even if `podid` or `nodeid` was part of the original event, except part of the `dn` key, they are now separate keys.
+Even if `podid` or `nodeid` was not part of the original event, except part of the `dn` key, they are now separate keys.
 
 For more information about configuration please see the `example-config.yaml`
 
@@ -229,7 +229,7 @@ To run against the Cisco ACI sandbox:
 > https://devnetsandbox.cisco.com/RM/Topology - "ACI Simulator AlwaysOn"
 
 # Internal metrics
-Internal metrics is exposed in Prometheus exposition format on the endpoint `/metrics`.
+Internal metrics are exposed in Prometheus exposition format on the endpoint `/metrics`.
 To get the metrics in openmetrics format use header `Accept: application/openmetrics-text`
      
 # Loki promtail configuration
