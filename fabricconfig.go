@@ -14,6 +14,7 @@
 package main
 
 type Fabric struct {
+	Name     string
 	Username string
 	Password string
 	Apic     []string
