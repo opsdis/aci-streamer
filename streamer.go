@@ -103,7 +103,7 @@ func main() {
 	password := viper.GetString(fmt.Sprintf("fabrics.%s.password", *fabric))
 	apicControllers := viper.GetStringSlice(fmt.Sprintf("fabrics.%s.apic", *fabric))
 
-	fabricConfig := Fabric{Username: username, Password: password, Apic: apicControllers}
+	fabricConfig := Fabric{Name: *fabric, Username: username, Password: password, Apic: apicControllers}
 	ctx := context.TODO()
 	connection := newAciConnction(ctx, fabricConfig, streams)
 
@@ -140,11 +140,11 @@ func startStreamer(connection *AciConnection, streams Streams) {
 	if err != nil {
 		os.Exit(1)
 	}
-	fabricName, _ := connection.getFabricName()
+	fabricACIName, _ := connection.getFabricACIName()
 
 	ch := make(chan string)
 
-	go connection.startWebSocket(fabricName, ch)
+	go connection.startWebSocket(fabricACIName, ch)
 
 	subIds := make(map[string]string)
 
@@ -155,7 +155,7 @@ func startStreamer(connection *AciConnection, streams Streams) {
 			if fromWS == "failed" {
 				// The websocket has for some reason failed and must be restarted
 				log.Info(fmt.Sprintf("WS Restart ==========================================="))
-				go connection.startWebSocket(fabricName, ch)
+				go connection.startWebSocket(fabricACIName, ch)
 
 			}
 			if fromWS == "started" {
@@ -179,6 +179,10 @@ func startStreamer(connection *AciConnection, streams Streams) {
 		err = connection.sessionRefresh()
 		if err != nil {
 			log.Error("Session refresh failed - ", err)
+			err = connection.login()
+			if err != nil {
+				log.Error("Session login failed - ", err)
+			}
 		}
 
 		for k, v := range subIds {

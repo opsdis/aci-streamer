@@ -16,7 +16,7 @@ scrape_configs:
       - localhost
     labels:
       job: aci-streamer-internal
-      __path__: /tmp/aci_streamer_internal.log
+      __path__: /tmp/aci_streamer_internal_*.log
 
 
   pipeline_stages:
@@ -25,10 +25,12 @@ scrape_configs:
        level: level
        status: status
        method: method
+       fabric: fabric
   - labels:
       level:
       status:
       method:
+      fabric:
 
 # Scrape the aci-exporter log
 - job_name: aci-exporter-internal
@@ -46,10 +48,12 @@ scrape_configs:
           level: level
           status: status
           method: method
+          fabric: fabric
     - labels:
         level:
         status:
         method:
+        fabric:
 
 # Scrape the aci-streamers different streams
 - job_name: aci-streamer
@@ -58,7 +62,7 @@ scrape_configs:
       - localhost
     labels:
       job: aci-streamer
-      __path__: /tmp/aci.log
+      __path__: /tmp/aci_fabric_*.log
 
   pipeline_stages:
   - json:
@@ -73,9 +77,11 @@ scrape_configs:
          expressions:
            message: message
            status: status
+           aci: aci
            fabric: fabric
       - labels:
            status:
+           aci:
            fabric:
   - match:
       selector: '{stream="audit"}'
@@ -88,6 +94,7 @@ scrape_configs:
               code: code
               trig: trig
               status: status
+              aci: aci
               fabric: fabric
         - labels:
             cause:
@@ -95,8 +102,8 @@ scrape_configs:
             code:
             trig:
             status:
+            aci:
             fabric:
-
   - match:
       selector: '{stream="faults"}'
       stages:
@@ -114,6 +121,7 @@ scrape_configs:
            prov: prov
            cause: cause
            code: code
+           aci: aci
            fabric: fabric
       - labels:
            severity:
@@ -123,9 +131,10 @@ scrape_configs:
            podid:
            nodeid:
            prov:
-           fabric:
+           aci:
            cause:
            code:
+           fabric:
       - match:
           selector: '{severity="cleared"} |~ ".*"'
           action: drop

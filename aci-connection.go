@@ -43,7 +43,7 @@ var wsCounter = promauto.NewCounterVec(prometheus.CounterOpts{
 	Name: MetricsPrefix + "ws_reads_total",
 	Help: "Number of websocket reads",
 },
-	[]string{"fabric"},
+	[]string{"fabric", "aci"},
 )
 
 // AciConnection is the connection object
@@ -179,15 +179,6 @@ func (c AciConnection) printCookie(jars []*http.Cookie) {
 
 func (c AciConnection) sessionRefresh() error {
 	return c.authenticate("refresh")
-	/*
-		data, err := c.get(fmt.Sprintf("%s/api/aaaRefresh.json", c.fabricConfig.Apic[*c.activeController]))
-		if err == nil {
-			*c.cookieValue = gjson.Get(string(data), "imdata.0.aaaLogin.attributes.token").Str
-		}
-		return err
-
-
-	*/
 }
 
 func (c AciConnection) subscriptionRefresh(subscriptionId string) error {
@@ -224,16 +215,8 @@ func (c AciConnection) subscribe(class string, query string) (string, error) {
 	return subscriptionId, nil
 }
 
-func (c AciConnection) startWebSocket(fabricName string, ch chan string) {
+func (c AciConnection) startWebSocket(fabricACIName string, ch chan string) {
 
-	/*
-		wsCounter := promauto.NewCounterVec(prometheus.CounterOpts{
-			Name: MetricsPrefix + "ws_reads_total",
-			Help: "Number of websocket reads",
-		},
-			[]string{"fabric"},
-		)
-	*/
 	rootCAs, _ := x509.SystemCertPool()
 	if rootCAs == nil {
 		rootCAs = x509.NewCertPool()
@@ -277,8 +260,8 @@ func (c AciConnection) startWebSocket(fabricName string, ch chan string) {
 				break
 
 			}
-			wsCounter.With(prometheus.Labels{"fabric": fabricName}).Add(1)
-			c.reciver(fabricName, mesg)
+			wsCounter.With(prometheus.Labels{"fabric": c.fabricConfig.Name, "aci": fabricACIName}).Add(1)
+			c.reciver(fabricACIName, mesg)
 		}
 		if breakout == "breakout" {
 			log.Info("WS breakout")
@@ -293,7 +276,7 @@ func (c AciConnection) activeSubscribtions(ids map[string]string) {
 	}
 }
 
-func (c AciConnection) reciver(fabricName string, mesg []byte) {
+func (c AciConnection) reciver(fabricACIName string, mesg []byte) {
 	subscribtionName := c.getSubscribersName(mesg)
 	if subscribtionName == "" {
 		// Not my subscribtion
@@ -331,7 +314,8 @@ func (c AciConnection) reciver(fabricName string, mesg []byte) {
 	if stream.Message.Name != "" {
 		modjson, _ = sjson.Set(modjson, stream.Message.Name, fmt.Sprintf(stream.Message.Format, messageProperties...))
 	}
-	modjson, _ = sjson.Set(modjson, "fabric", fabricName)
+	modjson, _ = sjson.Set(modjson, "aci", fabricACIName)
+	modjson, _ = sjson.Set(modjson, "fabric", c.fabricConfig.Name)
 	if stream.Timestamp.PropertyName != "" {
 		modjson, _ = sjson.Set(modjson, "timestamp", strings.Split(gjson.Get(json.Raw, stream.Timestamp.PropertyName).Str, "+")[0]+"000000Z")
 	}
@@ -357,7 +341,7 @@ func (c AciConnection) getSubscribersName(mesg []byte) string {
 	return ""
 }
 
-func (c AciConnection) getFabricName() (string, error) {
+func (c AciConnection) getFabricACIName() (string, error) {
 	data, err := c.getByQuery("fabric_name")
 	if err != nil {
 		return "", err
