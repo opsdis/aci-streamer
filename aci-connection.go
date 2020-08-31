@@ -27,6 +27,9 @@ import (
 	"strings"
 
 	//"github.com/tidwall/sjson"
+	log4go "github.com/jeanphorn/log4go"
+	log "github.com/sirupsen/logrus"
+	"github.com/spf13/viper"
 	"github.com/umisama/go-regexpcache"
 	"io/ioutil"
 	"net/http"
@@ -34,9 +37,6 @@ import (
 	"net/url"
 	"os"
 	"time"
-
-	log "github.com/sirupsen/logrus"
-	"github.com/spf13/viper"
 )
 
 // Create a Prometheus counter for number of reads on the websocket
@@ -248,14 +248,25 @@ func (c AciConnection) startWebSocket(fabricACIName string, ch chan string) {
 			ch <- "failed"
 			return
 		}
+		loggo := make(log4go.Logger)
 		if c.outputName == "" {
-			c.outputFile = os.Stdout
+			flw := log4go.NewConsoleLogWriter()
+			loggo.AddFilter("stdout", log4go.INFO, flw)
+			flw.SetFormat("%M")
 		} else {
-			c.outputFile, err = os.OpenFile(c.outputName, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
-			if err != nil {
-				log.Fatal(err)
-			}
-			defer c.outputFile.Close()
+			flw := log4go.NewFileLogWriter(c.outputName, true, true)
+			flw.SetFormat("%M")
+			flw.SetRotateMaxBackup(2)
+			loggo.AddFilter("file", log4go.INFO, flw)
+			defer loggo.Close()
+			/*
+				c.outputFile, err = os.OpenFile(c.outputName, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+				if err != nil {
+					log.Fatal(err)
+				}
+				defer c.outputFile.Close()
+
+			*/
 		}
 
 		ch <- "started"
@@ -274,7 +285,8 @@ func (c AciConnection) startWebSocket(fabricACIName string, ch chan string) {
 
 			}
 			wsCounter.With(prometheus.Labels{"fabric": c.fabricConfig.Name, "aci": fabricACIName}).Add(1)
-			c.reciver(fabricACIName, mesg)
+			c.output(c.reciver(fabricACIName, mesg), loggo)
+
 		}
 		if breakout == "breakout" {
 			log.Info("WS breakout")
@@ -289,11 +301,11 @@ func (c AciConnection) activeSubscribtions(ids map[string]string) {
 	}
 }
 
-func (c AciConnection) reciver(fabricACIName string, mesg []byte) {
+func (c AciConnection) reciver(fabricACIName string, mesg []byte) string {
 	subscribtionName := c.getSubscribersName(mesg)
 	if subscribtionName == "" {
 		// Not my subscribtion
-		return
+		return ""
 	}
 
 	stream := c.streams[subscribtionName]
@@ -334,12 +346,13 @@ func (c AciConnection) reciver(fabricACIName string, mesg []byte) {
 	}
 	modjson, _ = sjson.Set(modjson, "stream", subscribtionName)
 
-	c.output(modjson)
+	return modjson
 }
 
 // output write the data to the selected stream - default stdout
-func (c AciConnection) output(modjson string) {
-	c.outputFile.WriteString(fmt.Sprintf("%s\n", modjson))
+func (c AciConnection) output(modjson string, loggo log4go.Logger) {
+	loggo.Info(modjson)
+	//c.outputFile.WriteString(fmt.Sprintf("%s\n", modjson))
 	/*
 		if c.outputName == "" {
 			fmt.Println(modjson)
