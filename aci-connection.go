@@ -32,6 +32,7 @@ import (
 	"net/http"
 	"net/http/cookiejar"
 	"net/url"
+	"os"
 	"time"
 
 	log "github.com/sirupsen/logrus"
@@ -58,6 +59,8 @@ type AciConnection struct {
 	cookieValue           *string
 	activeSubscribtionIds map[string]string
 	streams               Streams
+	outputName            string
+	outputFile            *os.File
 }
 
 type WebSocket struct {
@@ -71,7 +74,7 @@ type Socket struct {
 
 }
 
-func newAciConnction(ctx context.Context, fabricConfig Fabric, streams Streams) *AciConnection {
+func newAciConnction(ctx context.Context, fabricConfig Fabric, streams Streams, output string) *AciConnection {
 	// Empty cookie jar
 	jar, _ := cookiejar.New(nil)
 
@@ -125,6 +128,7 @@ func newAciConnction(ctx context.Context, fabricConfig Fabric, streams Streams) 
 		activeSubscribtionIds: make(map[string]string),
 		streams:               streams,
 		websocketConfig:       ws,
+		outputName:            output,
 	}
 }
 
@@ -244,6 +248,15 @@ func (c AciConnection) startWebSocket(fabricACIName string, ch chan string) {
 			ch <- "failed"
 			return
 		}
+		if c.outputName == "" {
+			c.outputFile = os.Stdout
+		} else {
+			c.outputFile, err = os.OpenFile(c.outputName, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+			if err != nil {
+				log.Fatal(err)
+			}
+			defer c.outputFile.Close()
+		}
 
 		ch <- "started"
 
@@ -321,7 +334,17 @@ func (c AciConnection) reciver(fabricACIName string, mesg []byte) {
 	}
 	modjson, _ = sjson.Set(modjson, "stream", subscribtionName)
 
-	fmt.Println(modjson)
+	c.output(modjson)
+}
+
+// output write the data to the selected stream - default stdout
+func (c AciConnection) output(modjson string) {
+	c.outputFile.WriteString(fmt.Sprintf("%s\n", modjson))
+	/*
+		if c.outputName == "" {
+			fmt.Println(modjson)
+		}
+	*/
 }
 
 func (c AciConnection) getSubscribersName(mesg []byte) string {

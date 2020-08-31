@@ -53,6 +53,8 @@ func SetDefaultValues() {
 	viper.BindEnv("config")
 	viper.SetDefault("fabric", "")
 	viper.BindEnv("fabric")
+	viper.SetDefault("output", "")
+	viper.BindEnv("output")
 
 	// HTTPCLient
 	viper.SetDefault("HTTPClient.timeout", 3)

@@ -48,6 +48,7 @@ func main() {
 	usage := flag.Bool("u", false, "Show usage")
 	writeConfig := flag.Bool("default", false, "Write default config")
 	fabric := flag.String("fabric", viper.GetString("fabric"), "The fabric to use in the config")
+	output := flag.String("output", viper.GetString("output"), "The output file, default stdout")
 
 	flag.Parse()
 
@@ -105,7 +106,7 @@ func main() {
 
 	fabricConfig := Fabric{Name: *fabric, Username: username, Password: password, Apic: apicControllers}
 	ctx := context.TODO()
-	connection := newAciConnction(ctx, fabricConfig, streams)
+	connection := newAciConnction(ctx, fabricConfig, streams, *output)
 
 	// Create a Prometheus histogram for response time of the exporter
 	responseTime := promauto.NewHistogramVec(prometheus.HistogramOpts{
