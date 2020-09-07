@@ -26,7 +26,6 @@ import (
 	"github.com/tidwall/sjson"
 	"strings"
 
-	//"github.com/tidwall/sjson"
 	log4go "github.com/jeanphorn/log4go"
 	log "github.com/sirupsen/logrus"
 	"github.com/spf13/viper"
@@ -259,14 +258,7 @@ func (c AciConnection) startWebSocket(fabricACIName string, ch chan string) {
 			flw.SetRotateMaxBackup(2)
 			loggo.AddFilter("file", log4go.INFO, flw)
 			defer loggo.Close()
-			/*
-				c.outputFile, err = os.OpenFile(c.outputName, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
-				if err != nil {
-					log.Fatal(err)
-				}
-				defer c.outputFile.Close()
 
-			*/
 		}
 
 		ch <- "started"
@@ -352,12 +344,6 @@ func (c AciConnection) reciver(fabricACIName string, mesg []byte) string {
 // output write the data to the selected stream - default stdout
 func (c AciConnection) output(modjson string, loggo log4go.Logger) {
 	loggo.Info(modjson)
-	//c.outputFile.WriteString(fmt.Sprintf("%s\n", modjson))
-	/*
-		if c.outputName == "" {
-			fmt.Println(modjson)
-		}
-	*/
 }
 
 func (c AciConnection) getSubscribersName(mesg []byte) string {
