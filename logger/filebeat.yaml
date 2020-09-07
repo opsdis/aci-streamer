@@ -2,7 +2,7 @@ filebeat.inputs:
 
   - type: log
     paths:
-      - /tmp/aci.log
+      - /tmp/aci_fabric_*.log
     json.keys_under_root: true
     json.add_error_key: true
 
