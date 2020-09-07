@@ -11,7 +11,7 @@ The most basic example is subscribing to events on the ACI class `faultInst` to 
 The streamed events are by default written to stdout and format is json so its easy to consume by any log systems 
 like [Loki](https://github.com/grafana/loki) and [Elastic](https://www.elastic.co/).
 
-The events streams are configured by definition of `streams`. The below example create a stream of ACI created sessions.
+The events streams are configured by a definition of `streams`. The below example create a stream of ACI created sessions.
 
 ```yaml
 streams:
@@ -227,6 +227,12 @@ To run against the Cisco ACI sandbox:
 ```
 > Make sure that the sandbox url and authentication is correct. Check out Cisco sandboxes on 
 > https://devnetsandbox.cisco.com/RM/Topology - "ACI Simulator AlwaysOn"
+
+# Output
+By default the output is sent to standard out. The output kan also be directed to a file using the 
+`-output` flag. When written to a file aci-streamer use the log4go package to write the output. 
+The main reason for this to get file rotation on the output, which is good if aci-streamer is deployed 
+with a sidecar in kubernetes, like promtail.
 
 # Internal metrics
 Internal metrics are exposed in Prometheus exposition format on the endpoint `/metrics`.
