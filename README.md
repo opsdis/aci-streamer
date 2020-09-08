@@ -11,6 +11,22 @@ The most basic example is subscribing to events on the ACI class `faultInst` to 
 The streamed events are by default written to stdout and format is json so its easy to consume by any log systems 
 like [Loki](https://github.com/grafana/loki) and [Elastic](https://www.elastic.co/).
 
+![Dashboard example](/images/streamer_example.png)
+
+In the above screenshot we have combined Prometheus and Loki data sources in the same dashboard. 
+In the middle row we have the Loki logs based on a “stream” form aci-streamer called faults. 
+
+In the left graph we have the log panel for Loki logs. The query is based on the upper left Grafana variable filters 
+that are applied for the whole dashboard.
+
+    {fabric=~"$Aci",stream="faults",podid=~"$Podid",nodeid=~"$Nodeid",severity=~"$Severity"}
+
+On the right graph we create a simple fault rate metric based on the log data.
+
+    sum by (nodeid,severity) (rate({stream="faults",fabric=~"$Aci",podid=~"$Podid",nodeid=~"$Nodeid",severity=~"$Severity"}[5m]))
+
+The rest of the graphs are based on the aci-exporter Prometheus data using the same label filters so we can drill down both on pod, node and severity.
+
 The events streams are configured by a definition of `streams`. The below example create a stream of ACI created sessions.
 
 ```yaml
