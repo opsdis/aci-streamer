@@ -13,10 +13,10 @@ The most basic example is subscribing to events on the ACI class `faultInst` to 
 The streamed events are by default written to stdout and format is json so its easy to consume by any log systems 
 like [Loki](https://github.com/grafana/loki) and [Elastic](https://www.elastic.co/).
 
-![Dashboard example](/images/streamer_example.png)
+![Dashboard example](images/streamer_example.png)
 
 In the above screenshot we have combined Prometheus and Loki data sources in the same dashboard. 
-In the middle row we have the Loki logs based on a “stream” form aci-streamer called faults. 
+In the middle row we have the Loki logs based on a “stream” fromm the aci-streamer called faults. 
 
 In the left graph we have the log panel for Loki logs. The query is based on the upper left Grafana variable filters 
 that are applied for the whole dashboard.
@@ -49,7 +49,7 @@ streams:
         - name
         - ipAddress
 ```
-Orignal message from ACI looks like:
+Original message from ACI looks like:
 ```json
 {
 	"subscriptionId": ["72066106679951361"],
@@ -215,7 +215,7 @@ For more information about configuration please see the `example-config.yaml`
 All attributes in the configuration has default values, except for the fabric and the different streams sections.
 A fabric profile include the information specific to an ACI fabrics, like authentication and apic(s) url.
 
-If there is multiple apic urls configured the aci-streamer will use the first apic it can login to starting with the first
+If there is multiple apic urls configured the aci-streamer will use the first apic it can log in to starting with the first
 in the list.
 
 All configuration properties can be set by using environment variables. The prefix is `ACI_STREAMER_` and property 
@@ -227,7 +227,7 @@ must be in uppercase. So to set the property `port` with an environment variable
     go build -o build/aci-streamer  *.go
 
 ## Run
-By default the aci-streamer will look for a configuration file called `config.yaml`. The directory search paths are:
+By default, the aci-streamer will look for a configuration file called `config.yaml`. The directory search paths are:
 
 - Current directory
 - $HOME/.aci-streamer
@@ -247,7 +247,7 @@ To run against the Cisco ACI sandbox:
 > https://devnetsandbox.cisco.com/RM/Topology - "ACI Simulator AlwaysOn"
 
 # Output
-By default the output is sent to standard out. The output kan also be directed to a file using the 
+By default, the output is sent to standard out. The output kan also be directed to a file using the 
 `-output` flag. When written to a file aci-streamer use the log4go package to write the output. 
 The main reason for this to get file rotation on the output, which is good if aci-streamer is deployed 
 with a sidecar in kubernetes, like promtail.
