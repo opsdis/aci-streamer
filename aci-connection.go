@@ -302,13 +302,8 @@ func (c AciConnection) reciver(fabricACIName string, mesg []byte) string {
 
 	stream := c.streams[subscribtionName]
 
-	json := gjson.Get(string(mesg), stream.Root)
-	messageProperties := make([]interface{}, len(stream.Message.Properties))
-	for k, v := range stream.Message.Properties {
-		messageProperties[k] = gjson.Get(json.Raw, v).Str
-	}
-
 	labels := make(map[string]string)
+	json := gjson.Get(string(mesg), stream.Root)
 	for _, v := range stream.Labels {
 		re := regexpcache.MustCompile(v.Regex)
 		match := re.FindStringSubmatch(gjson.Get(json.Raw, v.PropertyName).Str)
@@ -320,6 +315,17 @@ func (c AciConnection) reciver(fabricACIName string, mesg []byte) string {
 			}
 		}
 	}
+
+	messageProperties := make([]interface{}, len(stream.Message.Properties))
+	//messageProperties := make(map[string]interface{})
+	for k, v := range stream.Message.Properties {
+		messageProperties[k] = gjson.Get(json.Raw, v).Str
+		val, ok := labels[v]
+		if ok {
+			messageProperties[k] = val
+		}
+	}
+
 	modjson := json.Raw
 
 	if len(labels) > 0 {
@@ -337,6 +343,11 @@ func (c AciConnection) reciver(fabricACIName string, mesg []byte) string {
 		modjson, _ = sjson.Set(modjson, "timestamp", strings.Split(gjson.Get(json.Raw, stream.Timestamp.PropertyName).Str, "+")[0]+"000000Z")
 	}
 	modjson, _ = sjson.Set(modjson, "stream", subscribtionName)
+
+	// drop
+	for _, v := range stream.Drops {
+		modjson, _ = sjson.Delete(modjson, v.PropertyName)
+	}
 
 	return modjson
 }

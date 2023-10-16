@@ -19,7 +19,8 @@ type Stream struct {
 	QueryParameter string         `mapstructure:"query_parameter"`
 	Root           string         `mapstructure:"root"`
 	Labels         []ConfigLabels `string:"labels"`
-	Timestamp      Timestamp      `mapstructure:"timestamp"`
+	Drops          []Property     `string:"drops"`
+	Timestamp      Property       `mapstructure:"timestamp"`
 	Message        Message        `string:"message"`
 }
 
@@ -27,11 +28,17 @@ type ConfigLabels struct {
 	PropertyName string `mapstructure:"property_name"`
 	Regex        string `mapstructure:"regex"`
 }
+
+/*
 type Timestamp struct {
 	PropertyName string `mapstructure:"property_name"`
 	//Regex        string `mapstructure:"regex"`
 }
-
+*/
+type Property struct {
+	PropertyName string `mapstructure:"property_name"`
+	//Regex        string `mapstructure:"regex"`
+}
 type Message struct {
 	Name       string   `mapstructure:"name"`
 	Format     string   `mapstructure:"format"`

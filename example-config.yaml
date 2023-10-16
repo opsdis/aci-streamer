@@ -39,11 +39,16 @@ streams:
 
   sessions:
     class_name: aaaActiveUserSession
-    query_parameter: "?query-target=self&query-target-filter=and(wcard(aaaActiveUserSession.status,\"created\"))"
     root: imdata.0.aaaActiveUserSession.attributes
+    query_parameter: "?query-target=self&query-target-filter=and(wcard(aaaActiveUserSession.status,\"created\"))"
+    timestamp:
+      property_name: loginTime
+    drops:
+      property_name: hashToken
     message:
-      name: message
-      format: "User %s IP %s"
+      name: mesg
+      format: "User %s - status %s IP %s"
       property_names:
         - name
+        - status
         - ipAddress
