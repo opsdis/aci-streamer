@@ -90,9 +90,9 @@ func newAciConnction(ctx context.Context, fabricConfig Fabric, streams Streams, 
 
 	urlMap := make(map[string]string)
 
-	urlMap["login"] = "/api/mo/aaaLogin.xml"
-	urlMap["refresh"] = "/api/mo/aaaRefresh.xml"
-	urlMap["logout"] = "/api/mo/aaaLogout.xml"
+	urlMap["login"] = "/api/aaaLogin.xml"
+	urlMap["refresh"] = "/api/aaaRefresh.xml"
+	urlMap["logout"] = "/api/aaaLogout.xml"
 	urlMap["fabric_name"] = "/api/mo/topology/pod-1/node-1/av.json"
 
 	// Create websocket definitions from fabricConfig
