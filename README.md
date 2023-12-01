@@ -10,13 +10,13 @@ aci-streamer - An Cisco ACI log streamer using ACI REST API subscription mechani
 The aci-streamer use the Cisco ACI API subscription to provide log streaming on events on ACI classes. 
 The most basic example is subscribing to events on the ACI class `faultInst` to get continues stream of fault events.
 
-The streamed events are by default written to stdout and format is json so its easy to consume by any log systems 
+The streamed events are by default written to stdout and format is json, so it's easy to consume by any log systems 
 like [Loki](https://github.com/grafana/loki) and [Elastic](https://www.elastic.co/).
 
 ![Dashboard example](images/streamer_example.png)
 
 In the above screenshot we have combined Prometheus and Loki data sources in the same dashboard. 
-In the middle row we have the Loki logs based on a “stream” fromm the aci-streamer called faults. 
+In the middle row we have the Loki logs based on a “stream” from the aci-streamer called faults. 
 
 In the left graph we have the log panel for Loki logs. The query is based on the upper left Grafana variable filters 
 that are applied for the whole dashboard.
@@ -27,7 +27,7 @@ On the right graph we create a simple fault rate metric based on the log data.
 
     sum by (nodeid,severity) (rate({stream="faults",fabric=~"$Aci",podid=~"$Podid",nodeid=~"$Nodeid",severity=~"$Severity"}[5m]))
 
-The rest of the graphs are based on the aci-exporter Prometheus data using the same label filters so we can drill down both on pod, node and severity.
+The rest of the graphs are based on the aci-exporter Prometheus data using the same label filters, so we can drill down both on pod, node and severity.
 
 The events streams are configured by a definition of `streams`. The below example create a stream of ACI created sessions.
 
@@ -41,7 +41,7 @@ streams:
     # The json root of where data is collected
     root: imdata.0.aaaActiveUserSession.attributes    
     # A json key called mesg that has a format, Go fmt.Sprintf, where source property names is inserted
-    # This is typical a field that do not exists in the original json
+    # This is typical a field that do not exist in the original json
     message:
       name: mesg
       format: "%s - %s"
@@ -237,7 +237,7 @@ By default, the aci-streamer will look for a configuration file called `config.y
 ```
     ./build/aci-streamer -fabric XYZ
 ```
-Where XYZ is an named entry in the fabrics section of the configuration file.
+Where XYZ is a named entry in the fabrics section of the configuration file.
 
 To run against the Cisco ACI sandbox:
 ```
