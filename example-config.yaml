@@ -30,10 +30,11 @@ streams:
         regex: "^topology/pod-(?P<podid>[1-9][0-9]*)/node-(?P<nodeid>[1-9][0-9]*)/sys/.*"
     message:
       name: message
-      format: "%s [dn: %s]"
+      format: "%s podid:%s [dn: %s]"
       # Names are add to the format in the order they are written
       property_names:
         - descr
+        - podid
         - dn
 
 
@@ -44,7 +45,8 @@ streams:
     timestamp:
       property_name: loginTime
     drops:
-      property_name: hashToken
+      - property_name: hashToken
+      - property_name: userdom
     message:
       name: mesg
       format: "User %s - status %s IP %s"

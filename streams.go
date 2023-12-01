@@ -14,6 +14,7 @@
 package main
 
 type Streams map[string]*Stream
+
 type Stream struct {
 	ClassName      string         `mapstructure:"class_name"`
 	QueryParameter string         `mapstructure:"query_parameter"`
@@ -29,12 +30,11 @@ type ConfigLabels struct {
 	Regex        string `mapstructure:"regex"`
 }
 
-/*
 type Timestamp struct {
 	PropertyName string `mapstructure:"property_name"`
 	//Regex        string `mapstructure:"regex"`
 }
-*/
+
 type Property struct {
 	PropertyName string `mapstructure:"property_name"`
 	//Regex        string `mapstructure:"regex"`
