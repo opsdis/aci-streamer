@@ -20,7 +20,7 @@ import (
 )
 
 const (
-	// Name of the program
+	// ExporterName Name of the program
 	ExporterName = "aci-streamer"
 
 	// MetricsPrefix the prefix for all internal metrics
