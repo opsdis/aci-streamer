@@ -1,10 +1,8 @@
-aci-streamer - An Cisco ACI log streamer using ACI REST API subscription mechanism.
+aci-streamer - A Cisco ACI log streamer using ACI REST API subscription mechanism.
 --------------------
 
 [![published](https://static.production.devnetcloud.com/codeexchange/assets/images/devnet-published.svg)](https://developer.cisco.com/codeexchange/github/repo/opsdis/aci-streamer)
 
-> This project is still in alpha and everything may change. If this software is useful or might be, please share
-> your experience and/or improvements.  
 
 # Overview
 The aci-streamer use the Cisco ACI API subscription to provide log streaming on events on ACI classes. 
