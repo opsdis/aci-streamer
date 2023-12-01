@@ -19,23 +19,25 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"fmt"
+	"strings"
+
 	"github.com/gorilla/websocket"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/tidwall/gjson"
 	"github.com/tidwall/sjson"
-	"strings"
 
-	log4go "github.com/jeanphorn/log4go"
-	log "github.com/sirupsen/logrus"
-	"github.com/spf13/viper"
-	"github.com/umisama/go-regexpcache"
 	"io/ioutil"
 	"net/http"
 	"net/http/cookiejar"
 	"net/url"
 	"os"
 	"time"
+
+	log4go "github.com/jeanphorn/log4go"
+	log "github.com/sirupsen/logrus"
+	"github.com/spf13/viper"
+	"github.com/umisama/go-regexpcache"
 )
 
 // Create a Prometheus counter for number of reads on the websocket
