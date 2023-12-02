@@ -82,7 +82,7 @@ func main() {
 	if *writeConfig {
 		err := viper.WriteConfigAs("./aci_streamer_default_config.yaml")
 		if err != nil {
-			log.Error("Can not write default config file - ", err)
+			fmt.Printf("Can not write default config file - %s\n", err)
 		}
 		os.Exit(0)
 	}
@@ -90,14 +90,14 @@ func main() {
 	// Find and read the config file
 	err := viper.ReadInConfig()
 	if err != nil {
-		log.Error("Configuration file not valid ", err)
+		fmt.Printf("Configuration file not valid - %s\n", err)
 		os.Exit(1)
 	}
 
 	var streams = Streams{}
 	err = viper.UnmarshalKey("streams", &streams)
 	if err != nil {
-		log.Error("Unable to decode streams into struct - ", err)
+		fmt.Printf("Unable to decode streams into struct - %s\n", err)
 		os.Exit(1)
 	}
 
@@ -107,7 +107,7 @@ func main() {
 
 	fabricConfig := Fabric{Name: *fabric, Username: username, Password: password, Apic: apicControllers}
 	ctx := context.TODO()
-	connection := newAciConnction(ctx, fabricConfig, streams, *output)
+	connection := newAcidConnection(ctx, fabricConfig, streams, *output)
 
 	// Create a Prometheus histogram for response time of the exporter
 	responseTime := promauto.NewHistogramVec(prometheus.HistogramOpts{
@@ -128,7 +128,10 @@ func main() {
 		},
 	))
 
-	log.Info(fmt.Sprintf("%s starting on port %d", ExporterName, viper.GetInt("port")))
+	log.WithFields(log.Fields{
+		"port": viper.GetInt("port"),
+		"name": ExporterName,
+	}).Info("starting")
 	s := &http.Server{
 		ReadTimeout:  10 * time.Second,
 		WriteTimeout: 10 * time.Second,
@@ -150,19 +153,25 @@ func startStreamer(connection *AciConnection, streams Streams) {
 
 	subIds := make(map[string]string)
 
-	// TODO add handling to restart everything if any of below fail
 	for {
 		select {
 		case fromWS := <-ch:
 			if fromWS == "failed" {
 				// The websocket has for some reason failed and must be restarted
-				log.Info(fmt.Sprintf("WS Restart ==========================================="))
+				log.WithFields(log.Fields{
+					"requestid": connection.ctx.Value("requestid"),
+					"fabric":    fabricACIName,
+				}).Info("websocket restarted on failed")
+
 				go connection.startWebSocket(fabricACIName, ch)
 
 			}
 			if fromWS == "started" {
 				// The websocket has been started and is ready
-				log.Info(fmt.Sprintf("Re-subscribe ======================="))
+				log.WithFields(log.Fields{
+					"requestid": connection.ctx.Value("requestid"),
+					"fabric":    fabricACIName,
+				}).Info(fmt.Sprintf("websocket ready for subscribtion"))
 
 				subIds = make(map[string]string)
 				for k, v := range streams {
@@ -170,36 +179,70 @@ func startStreamer(connection *AciConnection, streams Streams) {
 					subIds[subscriptionId] = k
 
 				}
-				connection.activeSubscribtions(subIds)
+				connection.activeSubscriptions(subIds)
 
 			}
 		case <-time.After(time.Second * 30):
-			log.Info(fmt.Sprintf("Start refresh"))
+			log.WithFields(log.Fields{
+				"requestid": connection.ctx.Value("requestid"),
+				"fabric":    fabricACIName,
+				"interval":  30,
+			}).Info(fmt.Sprintf("start subscribtion refresh on interval"))
 		}
-
-		log.Info(fmt.Sprintf("Refresh session"))
+		/*
+			log.WithFields(log.Fields{
+				"requestid": connection.ctx.Value("requestid"),
+				"fabric":    fabricACIName,
+			}).Info(fmt.Sprintf("Refresh subscribtion"))
+		*/
+		// this is login again
 		err = connection.sessionRefresh()
 		if err != nil {
-			log.Error("Session refresh failed - ", err)
+			log.WithFields(log.Fields{
+				"requestid": connection.ctx.Value("requestid"),
+				"fabric":    fabricACIName,
+				"error":     err,
+			}).Error("session refresh failed")
 			err = connection.login()
 			if err != nil {
-				log.Error("Session login failed - ", err)
+				log.WithFields(log.Fields{
+					"requestid": connection.ctx.Value("requestid"),
+					"fabric":    fabricACIName,
+					"error":     err,
+				}).Error("session login failed")
 			}
 		}
 
 		for k, v := range subIds {
-			log.Info(fmt.Sprintf("Refresh id %s for %s", k, v))
 			if v == "" {
 				// Must subscribe again since lost id
-				log.Warn(fmt.Sprintf("Found empty subscribtion id, re subscribe for %s", v))
+				log.WithFields(log.Fields{
+					"requestid":      connection.ctx.Value("requestid"),
+					"fabric":         fabricACIName,
+					"subscriptionid": k,
+				}).Warn(fmt.Sprintf("empty stream name"))
 				delete(subIds, k)
 				subscriptionId, _ := connection.subscribe(streams[v].ClassName, streams[v].QueryParameter)
 				subIds[subscriptionId] = v
-
 			}
+
+			// This websocket refresh
 			err = connection.subscriptionRefresh(k)
 			if err != nil {
-				log.Error("Subscription refresh failed, will be reconnected next iteration - ", err)
+				log.WithFields(log.Fields{
+					"requestid":      connection.ctx.Value("requestid"),
+					"fabric":         fabricACIName,
+					"subscriptionid": k,
+					"stream":         v,
+					"error":          err,
+				}).Error("subscription refresh failed, will be reconnected next iteration")
+			} else {
+				log.WithFields(log.Fields{
+					"requestid":      connection.ctx.Value("requestid"),
+					"fabric":         fabricACIName,
+					"subscriptionid": k,
+					"stream":         v,
+				}).Info(fmt.Sprintf("refresh subscribtion"))
 			}
 		}
 	}
@@ -235,9 +278,8 @@ func logcall(next http.Handler) http.Handler {
 
 		w.Header().Set("Content-Length", strconv.Itoa(lrw.length))
 		log.WithFields(log.Fields{
-			"method": r.Method,
-			"uri":    r.RequestURI,
-			//"endpoint":  endpoint,
+			"method":    r.Method,
+			"uri":       r.RequestURI,
 			"status":    lrw.statusCode,
 			"length":    lrw.length,
 			"requestid": requestid,
