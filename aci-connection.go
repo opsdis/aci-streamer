@@ -75,7 +75,7 @@ type Socket struct {
 
 }
 
-func newAciConnction(ctx context.Context, fabricConfig Fabric, streams Streams, output string) *AciConnection {
+func newAcidConnection(ctx context.Context, fabricConfig Fabric, streams Streams, output string) *AciConnection {
 	// Empty cookie jar
 	jar, _ := cookiejar.New(nil)
 
@@ -92,9 +92,9 @@ func newAciConnction(ctx context.Context, fabricConfig Fabric, streams Streams, 
 
 	urlMap := make(map[string]string)
 
-	urlMap["login"] = "/api/aaaLogin.xml"
-	urlMap["refresh"] = "/api/aaaRefresh.xml"
-	urlMap["logout"] = "/api/aaaLogout.xml"
+	urlMap["login"] = "/api/aaaLogin.json"
+	urlMap["refresh"] = "/api/aaaRefresh.json"
+	urlMap["logout"] = "/api/aaaLogout.json"
 	urlMap["fabric_name"] = "/api/mo/topology/pod-1/node-1/av.json"
 
 	// Create websocket definitions from fabricConfig
@@ -139,18 +139,22 @@ func (c AciConnection) login() error {
 
 func (c AciConnection) authenticate(method string) error {
 	for i, controller := range c.fabricConfig.Apic {
-		_, status, err, jars := c.doPostXML(fmt.Sprintf("%s%s", controller, c.URLMap[method]),
-			[]byte(fmt.Sprintf("<aaaUser name=%s pwd=%s/>", c.fabricConfig.Username, c.fabricConfig.Password)))
+		_, status, err, jars := c.doPostJSON(fmt.Sprintf("%s%s", controller, c.URLMap[method]),
+			[]byte(fmt.Sprintf("{\"aaaUser\":{\"attributes\":{\"name\":\"%s\",\"pwd\":\"%s\"}}}", c.fabricConfig.Username, c.fabricConfig.Password)))
 		if err != nil || status != 200 {
 
 			err = fmt.Errorf("failed to %s to %s, try next apic", method, controller)
 
-			log.Error(err)
+			log.WithFields(log.Fields{
+				"requestid":  c.ctx.Value("requestid"),
+				"method":     method,
+				"controller": controller,
+			}).Error("authentication failed")
 		} else {
 			*c.activeController = i
 			log.WithFields(log.Fields{
 				"requestid": c.ctx.Value("requestid"),
-			}).Info(fmt.Sprintf("Using apic %s", controller))
+			}).Debug(fmt.Sprintf("Using apic %s", controller))
 			c.printCookie(jars)
 			*c.cookieValue = jars[0].Value
 			return nil
@@ -167,8 +171,8 @@ func (c AciConnection) printCookie(jars []*http.Cookie) {
 		var curCk = jars[i]
 		//log.Printf("curCk.Raw=%s", curCk.Raw)
 		log.Debug(fmt.Sprintf("Cookie [%d]", i))
-		log.Info(fmt.Sprintf("Name=%s", curCk.Name))
-		log.Info(fmt.Sprintf("Value\t=%s", curCk.Value))
+		log.Debug(fmt.Sprintf("Name=%s", curCk.Name))
+		log.Debug(fmt.Sprintf("Value\t=%s", curCk.Value))
 		log.Debug(fmt.Sprintf("Path\t=%s", curCk.Path))
 		log.Debug(fmt.Sprintf("Domain\t=%s", curCk.Domain))
 		log.Debug(fmt.Sprintf("Expires\t=%s", curCk.Expires))
@@ -192,12 +196,13 @@ func (c AciConnection) subscriptionRefresh(subscriptionId string) error {
 }
 
 func (c AciConnection) logout() bool {
-	_, status, err, _ := c.doPostXML(fmt.Sprintf("%s%s", c.fabricConfig.Apic[*c.activeController], c.URLMap["logout"]),
-		[]byte(fmt.Sprintf("<aaaUser name=%s/>", c.fabricConfig.Username)))
+	_, status, err, _ := c.doPostJSON(fmt.Sprintf("%s%s", c.fabricConfig.Apic[*c.activeController], c.URLMap["logout"]),
+		[]byte(fmt.Sprintf("{\"aaaUser\":{\"attributes\":{\"name\":\"%s\"}}}", c.fabricConfig.Username)))
 	if err != nil || status != 200 {
 		log.WithFields(log.Fields{
 			"requestid": c.ctx.Value("requestid"),
-		}).Error(err)
+			"error":     err,
+		}).Error("logout")
 		return false
 	}
 	return true
@@ -213,7 +218,11 @@ func (c AciConnection) subscribe(class string, query string) (string, error) {
 	}
 
 	if err != nil {
-		log.Error(fmt.Sprintf("Class request %s failed - %s.", class, err))
+		log.WithFields(log.Fields{
+			"class": class,
+			"query": query,
+			"error": err,
+		}).Error("subscribe failed")
 		return "", err
 	}
 	subscriptionId := gjson.Get(string(data), "subscriptionId").Str
@@ -233,7 +242,7 @@ func (c AciConnection) startWebSocket(fabricACIName string, ch chan string) {
 		schema := c.websocketConfig.websocket[*c.activeController].schema
 
 		u := url.URL{Scheme: schema, Host: host, Path: "/socket" + *c.cookieValue}
-		log.Info(fmt.Sprintf("WS connecting to %s", u.String()))
+
 		wsHeaders := http.Header{
 			"Origin":                   {u.Host},
 			"Sec-WebSocket-Extensions": {"permessage-deflate; client_max_window_bits, x-webkit-deflate-frame"},
@@ -242,13 +251,20 @@ func (c AciConnection) startWebSocket(fabricACIName string, ch chan string) {
 		d := websocket.Dialer{TLSClientConfig: &config, HandshakeTimeout: 45 * time.Second}
 		start := time.Now()
 		wc, _, err := d.Dial(u.String(), wsHeaders)
-		log.Info(fmt.Sprintf("WS connection time %d", time.Since(start).Milliseconds()))
 
 		if err != nil {
-			log.Error("dial:", err)
+			log.WithFields(log.Fields{
+				"fabric": fabricACIName,
+				"error":  err,
+			}).Error("websocket connection")
 			ch <- "failed"
 			return
 		}
+		log.WithFields(log.Fields{
+			"fabric":    fabricACIName,
+			"exec_time": time.Since(start).Milliseconds(),
+		}).Info(fmt.Sprintf("websocket connection"))
+
 		loggo := make(log4go.Logger)
 		if c.outputName == "" {
 			flw := log4go.NewConsoleLogWriter()
@@ -265,12 +281,14 @@ func (c AciConnection) startWebSocket(fabricACIName string, ch chan string) {
 
 		ch <- "started"
 
-		defer wc.Close()
+		//defer wc.Close()
 
 		for {
 			_, mesg, err := wc.ReadMessage()
 			if err != nil {
-				log.Error("WS read:", err)
+				log.WithFields(log.Fields{
+					"error": err,
+				}).Error("websocket read message failed")
 				// send 0 for reconnect
 				ch <- "failed"
 				wc.Close()
@@ -279,30 +297,30 @@ func (c AciConnection) startWebSocket(fabricACIName string, ch chan string) {
 
 			}
 			wsCounter.With(prometheus.Labels{"fabric": c.fabricConfig.Name, "aci": fabricACIName}).Add(1)
-			c.output(c.reciver(fabricACIName, mesg), loggo)
-
+			c.output(c.receiver(fabricACIName, mesg), loggo)
 		}
+
 		if breakout == "breakout" {
-			log.Info("WS breakout")
+			wc.Close()
 			return
 		}
 	}
 }
 
-func (c AciConnection) activeSubscribtions(ids map[string]string) {
+func (c AciConnection) activeSubscriptions(ids map[string]string) {
 	for k, v := range ids {
 		c.activeSubscribtionIds[k] = v
 	}
 }
 
-func (c AciConnection) reciver(fabricACIName string, mesg []byte) string {
-	subscribtionName := c.getSubscribersName(mesg)
-	if subscribtionName == "" {
+func (c AciConnection) receiver(fabricACIName string, mesg []byte) string {
+	subscriptionName := c.getSubscribersName(mesg)
+	if subscriptionName == "" {
 		// Not my subscribtion
 		return ""
 	}
 
-	stream := c.streams[subscribtionName]
+	stream := c.streams[subscriptionName]
 
 	labels := make(map[string]string)
 	json := gjson.Get(string(mesg), stream.Root)
@@ -319,7 +337,6 @@ func (c AciConnection) reciver(fabricACIName string, mesg []byte) string {
 	}
 
 	messageProperties := make([]interface{}, len(stream.Message.Properties))
-	//messageProperties := make(map[string]interface{})
 	for k, v := range stream.Message.Properties {
 		messageProperties[k] = gjson.Get(json.Raw, v).Str
 		val, ok := labels[v]
@@ -328,30 +345,30 @@ func (c AciConnection) reciver(fabricACIName string, mesg []byte) string {
 		}
 	}
 
-	modjson := json.Raw
+	modJSON := json.Raw
 
 	if len(labels) > 0 {
 		for k, v := range labels {
-			modjson, _ = sjson.Set(modjson, k, v)
+			modJSON, _ = sjson.Set(modJSON, k, v)
 		}
 	}
 
 	if stream.Message.Name != "" {
-		modjson, _ = sjson.Set(modjson, stream.Message.Name, fmt.Sprintf(stream.Message.Format, messageProperties...))
+		modJSON, _ = sjson.Set(modJSON, stream.Message.Name, fmt.Sprintf(stream.Message.Format, messageProperties...))
 	}
-	modjson, _ = sjson.Set(modjson, "aci", fabricACIName)
-	modjson, _ = sjson.Set(modjson, "fabric", c.fabricConfig.Name)
+	modJSON, _ = sjson.Set(modJSON, "aci", fabricACIName)
+	modJSON, _ = sjson.Set(modJSON, "fabric", c.fabricConfig.Name)
 	if stream.Timestamp.PropertyName != "" {
-		modjson, _ = sjson.Set(modjson, "timestamp", strings.Split(gjson.Get(json.Raw, stream.Timestamp.PropertyName).Str, "+")[0]+"000000Z")
+		modJSON, _ = sjson.Set(modJSON, "timestamp", strings.Split(gjson.Get(json.Raw, stream.Timestamp.PropertyName).Str, "+")[0]+"000000Z")
 	}
-	modjson, _ = sjson.Set(modjson, "stream", subscribtionName)
+	modJSON, _ = sjson.Set(modJSON, "stream", subscriptionName)
 
 	// drop
 	for _, v := range stream.Drops {
-		modjson, _ = sjson.Delete(modjson, v.PropertyName)
+		modJSON, _ = sjson.Delete(modJSON, v.PropertyName)
 	}
 
-	return modjson
+	return modJSON
 }
 
 // output write the data to the selected stream - default stdout
@@ -377,12 +394,12 @@ func (c AciConnection) getSubscribersName(mesg []byte) string {
 }
 
 func (c AciConnection) getFabricACIName() (string, error) {
-	data, err := c.getByQuery("fabric_name")
+	data, err := c.getByClassQuery("infraCont", "?query-target=self")
+
 	if err != nil {
 		return "", err
 	}
-
-	return gjson.Get(data, "imdata.0.infraCont.attributes.fbDmNm").Str, nil
+	return gjson.Get(data, "imdata.#.infraCont.attributes.fbDmNm").Array()[0].Str, nil
 }
 
 func (c AciConnection) getByQuery(table string) (string, error) {
@@ -399,7 +416,10 @@ func (c AciConnection) getByClassQuery(class string, query string) (string, erro
 	if err != nil {
 		log.WithFields(log.Fields{
 			"requestid": c.ctx.Value("requestid"),
-		}).Error(fmt.Sprintf("Class request %s failed - %s.", class, err))
+			"class":     class,
+			"query":     query,
+			"error":     err,
+		}).Error("Query failed")
 		return "", err
 	}
 	return string(data), nil
@@ -416,8 +436,8 @@ func (c AciConnection) get(url string) ([]byte, error) {
 		"length":    len(body),
 		"requestid": c.ctx.Value("requestid"),
 		"exec_time": time.Since(start).Microseconds(),
-		"system":    "monitor",
-	}).Info("api call monitor system")
+		"system":    "fabric",
+	}).Info("api call")
 	return body, err
 }
 
@@ -427,7 +447,9 @@ func (c AciConnection) doGet(url string) ([]byte, int, error) {
 	if err != nil {
 		log.WithFields(log.Fields{
 			"requestid": c.ctx.Value("requestid"),
-		}).Error(err)
+			"url":       url,
+			"error":     err,
+		}).Error("create GET request")
 		return nil, 0, err
 	}
 	for k, v := range c.Headers {
@@ -436,7 +458,11 @@ func (c AciConnection) doGet(url string) ([]byte, int, error) {
 
 	resp, err := c.Client.GetClient().Do(req)
 	if err != nil {
-		log.Error(err)
+		log.WithFields(log.Fields{
+			"requestid": c.ctx.Value("requestid"),
+			"url":       url,
+			"error":     err,
+		}).Error("GET request")
 		return nil, 0, err
 	}
 
@@ -447,7 +473,8 @@ func (c AciConnection) doGet(url string) ([]byte, int, error) {
 		if err != nil {
 			log.WithFields(log.Fields{
 				"requestid": c.ctx.Value("requestid"),
-			}).Error(err)
+				"status":    resp.StatusCode,
+			}).Error("GET status")
 			return nil, resp.StatusCode, err
 		}
 
@@ -456,27 +483,29 @@ func (c AciConnection) doGet(url string) ([]byte, int, error) {
 	return nil, resp.StatusCode, fmt.Errorf("ACI api returned %d", resp.StatusCode)
 }
 
-func (c AciConnection) doPostXML(url string, requestBody []byte) ([]byte, int, error, []*http.Cookie) {
+func (c AciConnection) doPostJSON(url string, requestBody []byte) ([]byte, int, error, []*http.Cookie) {
 
 	req, err := http.NewRequest("POST", url, bytes.NewBuffer(requestBody))
 	if err != nil {
 		log.WithFields(log.Fields{
 			"requestid": c.ctx.Value("requestid"),
-		}).Error(err)
+			"error":     err,
+		}).Error("create POST request")
 		return nil, 0, err, nil
 	}
 
 	for k, v := range c.Headers {
 		req.Header.Set(k, v)
 	}
-	req.Header.Set("Content-Type", "application/xml")
+	req.Header.Set("Content-Type", "application/json")
 
 	start := time.Now()
 	resp, err := c.Client.GetClient().Do(req)
 	if err != nil {
 		log.WithFields(log.Fields{
 			"requestid": c.ctx.Value("requestid"),
-		}).Error(err)
+			"error":     err,
+		}).Error("POST request")
 		return nil, 0, err, nil
 	}
 	var status = resp.StatusCode
@@ -486,8 +515,8 @@ func (c AciConnection) doPostXML(url string, requestBody []byte) ([]byte, int, e
 		"status":    status,
 		"requestid": c.ctx.Value("requestid"),
 		"exec_time": time.Since(start).Microseconds(),
-		"system":    "monitor",
-	}).Info("api call monitor system")
+		"system":    "fabric",
+	}).Info("api call")
 
 	defer resp.Body.Close()
 
@@ -496,11 +525,16 @@ func (c AciConnection) doPostXML(url string, requestBody []byte) ([]byte, int, e
 		if err != nil {
 			log.WithFields(log.Fields{
 				"requestid": c.ctx.Value("requestid"),
-			}).Error(err)
+				"error":     err,
+			}).Error("read body")
 			return nil, resp.StatusCode, err, nil
 		}
-
 		return bodyBytes, resp.StatusCode, nil, c.Client.GetJar().Cookies(req.URL)
+	} else {
+		log.WithFields(log.Fields{
+			"requestid": c.ctx.Value("requestid"),
+			"status":    resp.StatusCode,
+		}).Error("POST status")
 	}
 
 	return nil, resp.StatusCode, fmt.Errorf("ACI api returned %d", resp.StatusCode), nil

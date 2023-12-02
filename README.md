@@ -5,19 +5,27 @@ aci-streamer - A Cisco ACI log streamer using ACI REST API subscription mechanis
 
 
 # Overview
-The aci-streamer use the Cisco ACI API subscription to provide log streaming on events on ACI classes. 
+The aci-streamer use the Cisco ACI API subscription to provide streaming on events on a ACI classes. 
+According to the Cisco [documentation](https://www.cisco.com/c/en/us/td/docs/dcn/aci/apic/all/apic-rest-api-configuration-guide/cisco-apic-rest-api-configuration-guide-42x-and-later/m_using_the_rest_api.html)
+subscription works for:
+
+*"The REST API supports the subscription to one or more MOs during your active API session. 
+When any MO is created, changed, or deleted because of a user- or system-initiated action, an event is 
+generated. If the event changes the data on any of the active subscribed queries, 
+the APIC will send out a notification to the API client that created the subscription."*
+
 The most basic example is subscribing to events on the ACI class `faultInst` to get continues stream of fault events.
 
-The streamed events are by default written to stdout and format is json, so it's easy to consume by any log systems 
-like [Loki](https://github.com/grafana/loki) and [Elastic](https://www.elastic.co/).
+The streamed events are by default written to stdout and the format is json, so it's easy to consume by any 
+systems like [Loki](https://github.com/grafana/loki) and [Elastic](https://www.elastic.co/).
 
 ![Dashboard example](images/streamer_example.png)
 
 In the above screenshot we have combined Prometheus and Loki data sources in the same dashboard. 
 In the middle row we have the Loki logs based on a “stream” from the aci-streamer called faults. 
 
-In the left graph we have the log panel for Loki logs. The query is based on the upper left Grafana variable filters 
-that are applied for the whole dashboard.
+In the left graph we have the log panel for Loki logs. The query is based on the upper left Grafana variable 
+filters that are applied for the whole dashboard.
 
     {fabric=~"$Aci",stream="faults",podid=~"$Podid",nodeid=~"$Nodeid",severity=~"$Severity"}
 
@@ -25,7 +33,8 @@ On the right graph we create a simple fault rate metric based on the log data.
 
     sum by (nodeid,severity) (rate({stream="faults",fabric=~"$Aci",podid=~"$Podid",nodeid=~"$Nodeid",severity=~"$Severity"}[5m]))
 
-The rest of the graphs are based on the aci-exporter Prometheus data using the same label filters, so we can drill down both on pod, node and severity.
+The rest of the graphs are based on the [aci-exporter](https://github.com/opsdis/aci-exporter) 
+Prometheus data using the same label filters, so we can drill down both on pod, node and severity.
 
 The events streams are configured by a definition of `streams`. The below example create a stream of ACI created sessions.
 
@@ -78,7 +87,7 @@ Original message from ACI looks like:
 	}]
 }
 ```
-After processed by the streams configuration:
+After processed by the above streams configuration:
 ```json
 {
 	"annotation": "",
